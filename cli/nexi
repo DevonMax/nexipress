@@ -1,0 +1,10 @@
+<?php
+$command = $argv[1] ?? null;
+
+if (!$command) {
+    echo "NexiPress CLI\n";
+    echo "Usage: php cli/nexi <command>\n";
+    exit(0);
+}
+
+echo "Command ricevuto: {$command}\n";
