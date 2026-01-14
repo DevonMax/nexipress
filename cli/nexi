@@ -1,4 +1,12 @@
 <?php
+declare(strict_types=1);
+
+/*
+ |--------------------------------------------------
+ | NexiPress CLI — Entry point (STEP 4-bis)
+ |--------------------------------------------------
+ */
+
 $command = $argv[1] ?? null;
 
 if (!$command) {
@@ -7,4 +15,82 @@ if (!$command) {
     exit(0);
 }
 
-echo "Command ricevuto: {$command}\n";
+/*
+ |--------------------------------------------------
+ | Static Paths (come index.php)
+ |--------------------------------------------------
+ */
+define('NP_ROOT', dirname(__DIR__));
+define('NP_APP',  NP_ROOT . '/application');
+define('NP_CORE', NP_ROOT . '/core');
+
+define('NEXIPRESS_CLI', true);
+
+/*
+ |--------------------------------------------------
+ | Core minimal load (come index.php)
+ |--------------------------------------------------
+ */
+require_once NP_CORE . '/class.php';
+require_once NP_CORE . '/error-handler.php';
+
+/*
+ |--------------------------------------------------
+ | Environment guard — PHP version
+ |--------------------------------------------------
+ */
+if (version_compare(PHP_VERSION, '8.0.0', '<')) {
+    nexi_render_error(
+        'Version PHP Error',
+        'PHP ' . phpversion() . ' detected. NexiPress requires PHP 8.0 or higher.',
+        500,
+        __FILE__,
+        __LINE__
+    );
+    exit(1);
+}
+
+/*
+ |--------------------------------------------------
+ | Environment guard — Required extensions
+ |--------------------------------------------------
+ */
+$requiredExt = ['pdo', 'mbstring', 'json', 'intl'];
+$missing = array_values(
+    array_filter($requiredExt, static fn ($ext) => !extension_loaded($ext))
+);
+
+if ($missing) {
+    nexi_render_error(
+        'Extension PHP Error',
+        'Missing extensions: ' . implode(', ', $missing),
+        500,
+        __FILE__,
+        __LINE__
+    );
+    exit(1);
+}
+
+/*
+ |--------------------------------------------------
+ | Configuration & bootstrap (NO router)
+ |--------------------------------------------------
+ */
+Config::load(require NP_ROOT . '/config.php');
+require_once NP_CORE . '/bootstrap.php';
+
+/*
+ |--------------------------------------------------
+ | Command dispatcher
+ |--------------------------------------------------
+ */
+switch ($command) {
+
+    case 'ping':
+        echo "OK: ping (core loaded)\n";
+        exit(0);
+
+    default:
+        echo "Comando sconosciuto: {$command}\n";
+        exit(1);
+}

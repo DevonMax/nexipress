@@ -74,222 +74,233 @@ class Route
 	protected static array $beforeHooks = [];
 	protected static array $afterHooks  = [];
 
-public static function dispatch_map(): bool
-{
-	$page = ($p = '/' . ltrim($_GET['page'] ?? 'home', '/')) === '/' ? '/home' : $p;
-	$page = nexi_transliterate($page, ctx::get('lang.current') ?? 'en');
-	self::run_before();
+	public static function dispatch_map(): bool
+	{
 
-	$routes = nexi_load_routes_map_cache();
-	$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+		// Single Source of Truth per il path
+		$rawPath =
+		    $_GET['page']
+		    ?? parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)
+		    ?? '/';
 
-	foreach ($routes as $route) {
+		// Normalizzazione forte
+		$page = '/' . trim($rawPath, '/');
 
-		if ($route['method'] !== $method) {
-			continue;
-		}
+		// Home fallback
+		$page = ($page === '/' ? '/home' : $page);
 
-		if (!preg_match($route['pattern'], $page, $matches)) {
+		$page = nexi_transliterate($page, ctx::get('lang.current') ?? 'en');
+		self::run_before();
 
-			if (is_debug() && (($route['required'] ?? false) === true)) {
+		$routes = nexi_load_routes_map_cache();
+		$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+		foreach ($routes as $route) {
+
+			if ($route['method'] !== $method) {
+				continue;
+			}
+
+			if (!preg_match($route['pattern'], $page, $matches)) {
+
+				if (is_debug() && (($route['required'] ?? false) === true)) {
+
+					$expected = substr_count($route['original'], ':');
+					$urlParts = explode('/', trim($page, '/'));
+					$routeParts = explode('/', trim($route['original'], '/'));
+
+					$routeStaticParts = [];
+					foreach ($routeParts as $part) {
+						if (str_starts_with($part, ':')) break;
+						$routeStaticParts[] = $part;
+					}
+
+					$isSamePrefix = array_slice($urlParts, 0, count($routeStaticParts)) === $routeStaticParts;
+
+					if ($isSamePrefix) {
+
+						$routeStaticCount = count($routeStaticParts);
+						$actual = count($urlParts) - $routeStaticCount;
+
+						if ($actual < $expected) {
+
+							if (Config::get('routing_log')) {
+								nexi_debug_log([
+									'result'  => 'ERROR',
+									'page'    => $page,
+									'pattern' => $route['original'],
+									'error'   => 'ROUTE_INCOMPLETE_PRE_MATCH'
+								]);
+							}
+
+							ctx::set('route.path', $route['original']);
+							nexi_render_error_safe(
+								nexi_lang('route_incomplete_title'),
+								nexi_lang('route_incomplete_message', $page),
+								422,
+								null,
+								null,
+								null,
+								$route['original']
+							);
+						}
+					}
+				}
+
+				continue;
+			}
+
+			ctx::set('route.path', $route['original']);
+
+			if (isset($route['required']) && $route['required'] === true) {
 
 				$expected = substr_count($route['original'], ':');
+
 				$urlParts = explode('/', trim($page, '/'));
 				$routeParts = explode('/', trim($route['original'], '/'));
 
-				$routeStaticParts = [];
+				$routeStatic = 0;
 				foreach ($routeParts as $part) {
 					if (str_starts_with($part, ':')) break;
-					$routeStaticParts[] = $part;
+					$routeStatic++;
 				}
 
-				$isSamePrefix = array_slice($urlParts, 0, count($routeStaticParts)) === $routeStaticParts;
+				$actual = count($urlParts) - $routeStatic;
 
-				if ($isSamePrefix) {
+				if ($actual < $expected) {
 
-					$routeStaticCount = count($routeStaticParts);
-					$actual = count($urlParts) - $routeStaticCount;
-
-					if ($actual < $expected) {
-
-						if (Config::get('routing_log')) {
-							nexi_debug_log([
-								'result'  => 'ERROR',
-								'page'    => $page,
-								'pattern' => $route['original'],
-								'error'   => 'ROUTE_INCOMPLETE_PRE_MATCH'
-							]);
-						}
-
-						ctx::set('route.path', $route['original']);
-						nexi_render_error_safe(
-							nexi_lang('route_incomplete_title'),
-							nexi_lang('route_incomplete_message', $page),
-							422,
-							null,
-							null,
-							null,
-							$route['original']
-						);
+					if (Config::get('routing_log')) {
+						nexi_debug_log([
+							'result'  => 'ERROR',
+							'page'    => $page,
+							'pattern' => $route['original'],
+							'error'   => 'ROUTE_INCOMPLETE_POST_MATCH'
+						]);
 					}
+
+					nexi_render_error_safe(
+						nexi_lang('route_incomplete_title'),
+						nexi_lang('route_incomplete_message', $page),
+						422,
+						null,
+						null,
+						null,
+						$route['original']
+					);
 				}
 			}
 
-			continue;
-		}
+			$params = array_filter(
+				$matches,
+				fn($k) => !is_int($k),
+				ARRAY_FILTER_USE_KEY
+			);
 
-		ctx::set('route.path', $route['original']);
+			foreach ($route['types'] as $key => $type) {
 
-		if (isset($route['required']) && $route['required'] === true) {
+				if (!array_key_exists($key, $params)) continue;
+				if ($params[$key] === '') continue;
 
-			$expected = substr_count($route['original'], ':');
+				if (!validate_type($type, $params[$key])) {
 
-			$urlParts = explode('/', trim($page, '/'));
-			$routeParts = explode('/', trim($route['original'], '/'));
+					if (Config::get('routing_log')) {
+						nexi_debug_log([
+							'result' => 'ERROR',
+							'page'   => $page,
+							'params' => $params,
+							'error'  => 'INVALID_TYPE'
+						]);
+					}
 
-			$routeStatic = 0;
-			foreach ($routeParts as $part) {
-				if (str_starts_with($part, ':')) break;
-				$routeStatic++;
-			}
-
-			$actual = count($urlParts) - $routeStatic;
-
-			if ($actual < $expected) {
-
-				if (Config::get('routing_log')) {
-					nexi_debug_log([
-						'result'  => 'ERROR',
-						'page'    => $page,
-						'pattern' => $route['original'],
-						'error'   => 'ROUTE_INCOMPLETE_POST_MATCH'
-					]);
+					nexi_render_error_safe(
+						nexi_lang('type_invalid_title'),
+						nexi_lang('type_invalid_message', $key, $params[$key], $_GET['page'] ?? ''),
+						422
+					);
 				}
-
-				nexi_render_error_safe(
-					nexi_lang('route_incomplete_title'),
-					nexi_lang('route_incomplete_message', $page),
-					422,
-					null,
-					null,
-					null,
-					$route['original']
-				);
 			}
-		}
 
-		$params = array_filter(
-			$matches,
-			fn($k) => !is_int($k),
-			ARRAY_FILTER_USE_KEY
-		);
+			$target = $route['target'];
+			if (!str_contains($target, ':') && !str_starts_with($target, '/')) {
+				$target = 'app:controller/' . ltrim($target, '/');
+			}
+			if (!str_ends_with($target, '.php')) {
+				$target .= '.php';
+			}
 
-		foreach ($route['types'] as $key => $type) {
+			$file = alias($target, false);
 
-			if (!array_key_exists($key, $params)) continue;
-			if ($params[$key] === '') continue;
-
-			if (!validate_type($type, $params[$key])) {
+			if (!str_ends_with($file, '.controller.php')) {
 
 				if (Config::get('routing_log')) {
 					nexi_debug_log([
 						'result' => 'ERROR',
 						'page'   => $page,
-						'params' => $params,
-						'error'  => 'INVALID_TYPE'
+						'file'   => $file,
+						'error'  => 'INVALID_CONTROLLER'
 					]);
 				}
 
 				nexi_render_error_safe(
-					nexi_lang('type_invalid_title'),
-					nexi_lang('type_invalid_message', $key, $params[$key], $_GET['page'] ?? ''),
-					422
+					nexi_lang('controller_not_found_title'),
+					nexi_lang('controller_not_found_message', path_relative($file)),
+					500
 				);
 			}
-		}
 
-		$target = $route['target'];
-		if (!str_contains($target, ':') && !str_starts_with($target, '/')) {
-			$target = 'app:controller/' . ltrim($target, '/');
-		}
-		if (!str_ends_with($target, '.php')) {
-			$target .= '.php';
-		}
+			if (!file_exists($file)) {
 
-		$file = alias($target, false);
+				if (Config::get('routing_log')) {
+					nexi_debug_log([
+						'result' => 'ERROR',
+						'page'   => $page,
+						'file'   => $file,
+						'error'  => 'CONTROLLER_NOT_FOUND'
+					]);
+				}
 
-		if (!str_ends_with($file, '.controller.php')) {
+				nexi_render_error_safe(
+					nexi_lang('not_found_title'),
+					nexi_lang('not_found_message', path_relative($file)),
+					404
+				);
+			}
+
+			ctx::set('route.alias_map', $route['alias']);
+			ctx::set('route.path', $route['original']);
+			ctx::set('route.resolve', _link($route['original'], $params));
+			ctx::set('route.real', path_relative($route['target']));
+			ctx::set('route.params', $params);
+			ctx::set('route.required', isset($route['required']) ? (bool) $route['required'] : false);
+			ctx::set('route.query', $_GET);
 
 			if (Config::get('routing_log')) {
 				nexi_debug_log([
-					'result' => 'ERROR',
-					'page'   => $page,
-					'file'   => $file,
-					'error'  => 'INVALID_CONTROLLER'
+					'result'  => 'MATCHED',
+					'page'    => $page,
+					'pattern' => $route['original'],
+					'regex'   => $route['pattern'],
+					'file'    => $file,
+					'params'  => $params,
 				]);
 			}
 
-			nexi_render_error_safe(
-				nexi_lang('controller_not_found_title'),
-				nexi_lang('controller_not_found_message', path_relative($file)),
-				500
-			);
+			require $file;
+
+			self::run_after();
+			return true;
 		}
-
-		if (!file_exists($file)) {
-
-			if (Config::get('routing_log')) {
-				nexi_debug_log([
-					'result' => 'ERROR',
-					'page'   => $page,
-					'file'   => $file,
-					'error'  => 'CONTROLLER_NOT_FOUND'
-				]);
-			}
-
-			nexi_render_error_safe(
-				nexi_lang('not_found_title'),
-				nexi_lang('not_found_message', path_relative($file)),
-				404
-			);
-		}
-
-		ctx::set('route.alias_map', $route['alias']);
-		ctx::set('route.path', $route['original']);
-		ctx::set('route.resolve', _link($route['original'], $params));
-		ctx::set('route.real', path_relative($route['target']));
-		ctx::set('route.params', $params);
-		ctx::set('route.required', isset($route['required']) ? (bool) $route['required'] : false);
-		ctx::set('route.query', $_GET);
 
 		if (Config::get('routing_log')) {
 			nexi_debug_log([
-				'result'  => 'MATCHED',
-				'page'    => $page,
-				'pattern' => $route['original'],
-				'regex'   => $route['pattern'],
-				'file'    => $file,
-				'params'  => $params,
+				'result' => 'NO_MATCH',
+				'page'   => $page,
+				'error'  => 'NO_ROUTE_MATCHED'
 			]);
 		}
 
-		require $file;
-
-		self::run_after();
-		return true;
+		return false;
 	}
-
-	if (Config::get('routing_log')) {
-		nexi_debug_log([
-			'result' => 'NO_MATCH',
-			'page'   => $page,
-			'error'  => 'NO_ROUTE_MATCHED'
-		]);
-	}
-
-	return false;
-}
-
 
 	/**
 	* Restituisce il path originale associato a un alias di rotta.
@@ -370,7 +381,7 @@ public static function dispatch_map(): bool
 	function nexi_load_routes_map_cache(): array {
 
 		// $siteId = defined('SITE_ID') ? SITE_ID : 'site-main';
-		$cachePath = alias("approot:routes.cache.php",false);
+		$cachePath = alias("scache:routes.cache.php",false);
 		return file_exists($cachePath) ? require $cachePath : [];
 
 	}

@@ -27,8 +27,8 @@ function nexi_load_routes_from_map(): void
 	// ------------------------------------------------------------------
 	// File sorgente e file cache
 	// ------------------------------------------------------------------
-	$mapFile   = alias('approot:routes.map.php', false);
-	$cacheFile = alias('approot:routes.cache.php', false);
+	$mapFile   = alias('scache:routes.map.php', false);
+	$cacheFile = alias('scache:routes.cache.php', false);
 
 	// ------------------------------------------------------------------
 	// Guard: file mappa obbligatorio

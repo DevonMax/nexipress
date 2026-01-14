@@ -1,0 +1,94 @@
+# SECTION: PROTEZIONE FILE SENSIBILI
+<FilesMatch "^(composer\.json|composer\.lock|.*\.md|.*\.env|config\.php|\.user\.ini|phpunit\.xml|\.htaccess|autoload\.php|web\.config|\.gitignore|\.gitattributes|\.editorconfig|README\.md)$">
+	Order allow,deny
+	Deny from all
+</FilesMatch>
+<FilesMatch "\.(bak|backup|old|swp|orig|save|log|sql|sqlite3?)$">
+	Order allow,deny
+	Deny from all
+</FilesMatch>
+<FilesMatch "^\.">
+	Order allow,deny
+	Deny from all
+</FilesMatch>
+# -------------------------
+
+# SECTION: DISABILITA INDEX LISTING
+Options -Indexes
+
+# -------------------------
+
+# SECTION: LIMITA HTTP METHODS
+<LimitExcept GET POST>
+	Deny from all
+</LimitExcept>
+# -------------------------
+
+# SECTION: COMPRESSIONE ASSET
+<IfModule mod_deflate.c>
+    # COMPRESSIONE DI HTML, CSS, JS, JSON, XML, SVG
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript
+    AddOutputFilterByType DEFLATE application/javascript application/json application/xml
+    AddOutputFilterByType DEFLATE image/svg+xml application/rss+xml application/atom+xml
+    AddOutputFilterByType DEFLATE application/vnd.ms-fontobject application/x-font-ttf font/otf
+
+    # Evita problemi con vecchi browser
+    BrowserMatch ^Mozilla/4 gzip-only-text/html
+    BrowserMatch ^Mozilla/4\.0[678] no-gzip
+    BrowserMatch \bMSIE !no-gzip !gzip-only-text/html
+</IfModule>
+# -------------------------
+
+# SECTION: CACHE ASSET STATICI
+<IfModule mod_expires.c>
+	ExpiresActive On
+	ExpiresDefault "access plus 1 month"
+	<FilesMatch "\.(js|css|jpg|jpeg|png|gif|svg|ico|woff|woff2|ttf|eot)$">
+		ExpiresDefault "access plus 1 year"
+		ExpiresDefault "access plus 1 year"
+		Header set Cache-Control "public, max-age=31536000"
+	</FilesMatch>
+</IfModule>
+# -------------------------
+
+# SECTION: NO-CACHE IN SVILUPPO
+# IMPEDISCE LA CACHE SU PAGINE DINAMICHE; NON TOCCA GLI ASSET STATICI (GESTITI SOTTO)
+<IfModule mod_headers.c>
+	<If "%{ENV:APP_ENV} == 'dev'">
+		<FilesMatch "\.(js|css)$">
+			Header always unset Cache-Control
+			Header always unset Expires
+			Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+			Header always set Pragma "no-cache"
+			Header always set Expires "0"
+		</FilesMatch>
+	</If>
+</IfModule>
+# -------------------------
+
+# SECTION: PROTEZIONE GIT
+RedirectMatch 404 /\.git
+# -------------------------
+
+RewriteEngine On
+
+# PERMETTE DI ACCEDERE SOLO ALLE FLAGS DI SYSTEM
+RewriteRule ^system/locale/flags/ - [L]
+RewriteRule ^system/locale/_lang_switch.controller.php - [L]
+RewriteRule ^system/assets/ - [L]
+RewriteRule ^core/assets/ - [L]
+
+# PROTEGGE INTERE CARTELLE SENSIBILI
+RewriteRule ^(application|core|system|vendor|storage|log)/ - [F,L]
+# -------------------------
+
+# ESTENSIONI SERVITE NORMALMENTE DAL SERVER - NON PASSANO DAL ROUTER
+RewriteCond %{REQUEST_URI} \.(html|css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webp|map)$ [NC]
+RewriteRule ^ - [L]
+# -------------------------
+
+# SECTION: ROUTING PRINCIPALE
+# RISCRIVE SEMPRE TUTTO VERSO INDEX.PHP BYPASSANDO !-f !-d (se non esiste file/directory).
+# Riscrive sempre tutto a index.php, affidandosi ai filtri precedenti per gli asset
+RewriteRule ^(.*)$ index.php?page=/$1 [QSA,L]
+# -------------------------

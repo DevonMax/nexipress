@@ -362,7 +362,7 @@ function nexi_debug_log(array $data): void
 		isset($data['file']) ? (is_file($data['file']) ? 'YES' : 'NO') : '',
 		isset($data['params']) ? json_encode($data['params'], JSON_UNESCAPED_UNICODE) : '',
 		$data['error']    ?? ''
-	]);
+	], ',', '"', '\\');
 
 	fclose($fp);
 }
@@ -407,9 +407,8 @@ function nexi_db_log(string $dbKey, array $data): void
 		$data['query'] ?? '',
 		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
 		$data['time'] ?? null
-	]);
+	], ',', '"', '\\');
+
 
 	fclose($fp);
 }
-
-?>
