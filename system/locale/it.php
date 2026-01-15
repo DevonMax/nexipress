@@ -10,6 +10,8 @@ return [
 	// Router/Controller Error
 	'route_incomplete_title'   => "Parametri mancanti",
 	'route_incomplete_message' => "\nLa route '%s' è incompleta, non rispetta lo schema richiesto oppure è inesistente.\nControllate il percorso e i parametri passati.\n Potreste avere impostato la Route obbligatoria e avere passato meno parametri di quelli richiesti.",
+	'route_extra_param_title'   => "Parametri Extra",
+	'route_extra_param_message' => "\nLa route '%s' ha dei parametri extra e non rispetta lo schema richiesto oppure è inesistente.\nControllate il percorso e i parametri passati.",
 
 	// File Mappa Routing - routers.map.php
 	'routemap_array_wrong_title'   => "Array non valido",

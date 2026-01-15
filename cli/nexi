@@ -2,95 +2,111 @@
 declare(strict_types=1);
 
 /*
- |--------------------------------------------------
- | NexiPress CLI — Entry point (STEP 4-bis)
- |--------------------------------------------------
- */
+|--------------------------------------------------
+| NexiPress CLI — Entry point
+|--------------------------------------------------
+*/
 
-$command = $argv[1] ?? null;
-
-if (!$command) {
-    echo "NexiPress CLI\n";
-    echo "Usage: php cli/nexi <command>\n";
-    exit(0);
-}
+$command = $argv[1] ?? 'help';
 
 /*
- |--------------------------------------------------
- | Static Paths (come index.php)
- |--------------------------------------------------
- */
+|--------------------------------------------------
+| Static Paths (same as index.php)
+|--------------------------------------------------
+*/
 define('NP_ROOT', dirname(__DIR__));
 define('NP_APP',  NP_ROOT . '/application');
 define('NP_CORE', NP_ROOT . '/core');
+define('NP_STORAGE', NP_ROOT . '/storage');
 
 define('NEXIPRESS_CLI', true);
 
 /*
- |--------------------------------------------------
- | Core minimal load (come index.php)
- |--------------------------------------------------
- */
+|--------------------------------------------------
+| Minimal core load (NO router)
+|--------------------------------------------------
+*/
 require_once NP_CORE . '/class.php';
 require_once NP_CORE . '/error-handler.php';
+require_once NP_CORE . '/route-loader.php';
 
 /*
  |--------------------------------------------------
- | Environment guard — PHP version
- |--------------------------------------------------
- */
+| Environment guard — PHP version
+|--------------------------------------------------
+*/
 if (version_compare(PHP_VERSION, '8.0.0', '<')) {
-    nexi_render_error(
-        'Version PHP Error',
-        'PHP ' . phpversion() . ' detected. NexiPress requires PHP 8.0 or higher.',
-        500,
-        __FILE__,
-        __LINE__
-    );
-    exit(1);
+	echo "ERROR: PHP >= 8.0 required. Detected: " . PHP_VERSION . PHP_EOL . "\n";
+	exit(1);
 }
 
 /*
- |--------------------------------------------------
- | Environment guard — Required extensions
- |--------------------------------------------------
- */
+|--------------------------------------------------
+| Environment guard — Required extensions
+|--------------------------------------------------
+*/
 $requiredExt = ['pdo', 'mbstring', 'json', 'intl'];
 $missing = array_values(
-    array_filter($requiredExt, static fn ($ext) => !extension_loaded($ext))
+	array_filter($requiredExt, static fn ($ext) => !extension_loaded($ext))
 );
 
 if ($missing) {
-    nexi_render_error(
-        'Extension PHP Error',
-        'Missing extensions: ' . implode(', ', $missing),
-        500,
-        __FILE__,
-        __LINE__
-    );
-    exit(1);
+	echo "ERROR: Missing PHP extensions: " . implode(', ', $missing). "\n";
+	exit(1);
 }
 
 /*
- |--------------------------------------------------
- | Configuration & bootstrap (NO router)
- |--------------------------------------------------
- */
+|--------------------------------------------------
+| Configuration & bootstrap (NO routing)
+|--------------------------------------------------
+*/
+if (!file_exists(NP_ROOT . '/config.php')) {
+	echo STDERR, "ERROR: Missing config.php\n";
+	exit(1);
+}
+
 Config::load(require NP_ROOT . '/config.php');
+
 require_once NP_CORE . '/bootstrap.php';
 
 /*
- |--------------------------------------------------
- | Command dispatcher
- |--------------------------------------------------
- */
-switch ($command) {
+|--------------------------------------------------
+| Command registry
+|--------------------------------------------------
+*/
+$commandMap = [
+	'doctor'  => NP_ROOT . '/cli/commands/doctor.php',
+	'envcheck' => NP_ROOT . '/cli/commands/envcheck.php',
+	'help'  => NP_ROOT . '/cli/commands/help.php',
+	'integrity'  => NP_ROOT . '/cli/commands/integrity.php',
+	'logs'  => NP_ROOT . '/cli/commands/logs.php',
+	'ping'  => NP_ROOT . '/cli/commands/ping.php',
+	'routes'  => NP_ROOT . '/cli/commands/routes.php',
+];
 
-    case 'ping':
-        echo "OK: ping (core loaded)\n";
-        exit(0);
+/*
+|--------------------------------------------------
+| Dispatch
+|----------------------
+*/
 
-    default:
-        echo "Comando sconosciuto: {$command}\n";
-        exit(1);
+if (!isset($commandMap[$command])) {
+	echo "Unknown command: {$command}\n\n";
+	require $commandMap['help'];
+	exit(1);
 }
+
+$result = require $commandMap[$command];
+
+// Caso 1: il comando stampa e termina da solo (eg. ping, help)
+if (is_int($result)) {
+	exit($result);
+}
+
+// Caso 2: comando strutturato (eg. integrity)
+if (is_callable($result)) {
+	exit($result($argv));
+}
+
+// Caso 3: comando procedurale senza return
+exit(0);

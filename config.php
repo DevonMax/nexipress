@@ -80,7 +80,7 @@ return [
 	* prefix = sito multilingua con prefisso in url [www.namesite.com/en]
 	* subdomain = con sottodominio dedicato per ogni lingua [en.namesite.com]
 	*/
-	'lang_mode' => 'subdomain',
+	'lang_mode' => 'mono',
 
 	/*
 	* home = dopo cambio lingua torna in hone

@@ -374,41 +374,121 @@ function nexi_debug_log(array $data): void
 | Log diagnostico delle query DB (solo in debug display).
 |--------------------------------------------------------------------------
 */
-function nexi_db_log(string $dbKey, array $data): void
-{
-	if (Config::get('debug') !== 'display') return;
+// function nexi_db_log(string $dbKey, array $data): void
+// {
+// 	if (Config::get('debug') !== 'display') return;
 
-	$week     = date('o-W');
-	$log_date = date('Y-m-d H:i:s');
+// 	$week     = date('o-W');
+// 	$log_date = date('Y-m-d H:i:s');
 
-	$log_dir  = rtrim(Config::get('log_dir'), '/') . '/';
-	$log_file = $log_dir . "nexi-" . Config::get("databases.$dbKey.log") . "-week-$week.log";
+// 	$log_dir  = rtrim(Config::get('log_dir'), '/') . '/';
+// 	$log_file = $log_dir . "nexi-" . Config::get("databases.$dbKey.log") . "-week-$week.log";
 
-	is_dir(dirname($log_file)) || mkdir(dirname($log_file), 0775, true);
+// 	is_dir(dirname($log_file)) || mkdir(dirname($log_file), 0775, true);
 
-	$isNewFile = !file_exists($log_file) || filesize($log_file) === 0;
-	$fp = fopen($log_file, 'a');
+// 	$isNewFile = !file_exists($log_file) || filesize($log_file) === 0;
+// 	$fp = fopen($log_file, 'a');
 
-	// HEADER (una sola volta)
-	if ($isNewFile) {
-		fputcsv($fp, [
+// 	// HEADER (una sola volta)
+// 	if ($isNewFile) {
+// 		fputcsv($fp, [
+// 			'TIMESTAMP',
+// 			'DB_KEY',
+// 			'QUERY',
+// 			'PARAMS_JSON',
+// 			'EXEC_TIME_MS'
+// 		]);
+// 	}
+
+// 	// ROW
+// 	fputcsv($fp, [
+// 		$log_date,
+// 		$dbKey,
+// 		$data['query'] ?? '',
+// 		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
+// 		$data['time'] ?? null
+// 	], ',', '"', '\\');
+
+
+// 	fclose($fp);
+// }
+
+function nexi_db_log(
+	string $dbKey,
+	string $level,
+	array $data,
+	bool $force = false
+): bool {
+
+	// Log SEMPRE, debug serve solo per output a schermo
+	if (!$force && Config::get('log') === false) {
+		return false;
+	}
+
+	$timestamp = date('Y-m-d H:i:s');
+	$week      = date('o-W');
+
+	$logDir = rtrim(
+		Config::get('log_dir') ?? (NP_STORAGE . '/log'),
+		'/'
+	);
+
+	if (!is_dir($logDir) && !mkdir($logDir, 0775, true)) {
+		return false;
+	}
+
+	if (!is_writable($logDir)) {
+		return false;
+	}
+
+	$logName = Config::get("databases.$dbKey.log") ?: "db-$dbKey";
+	$logFile = "$logDir/nexi-$logName-week-$week.log";
+
+	$isNew = !file_exists($logFile);
+
+	$fp = fopen($logFile, 'ab'); // binary + append
+	if (!$fp) {
+		return false;
+	}
+
+if ($isNew) {
+	fputcsv(
+		$fp,
+		[
 			'TIMESTAMP',
+			'LEVEL',
 			'DB_KEY',
 			'QUERY',
 			'PARAMS_JSON',
 			'EXEC_TIME_MS'
-		]);
-	}
-
-	// ROW
-	fputcsv($fp, [
-		$log_date,
-		$dbKey,
-		$data['query'] ?? '',
-		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
-		$data['time'] ?? null
-	], ',', '"', '\\');
-
-
-	fclose($fp);
+		],
+		',',
+		'"',
+		'\\'
+	);
 }
+
+fputcsv(
+	$fp,
+	[
+		$timestamp,
+		strtoupper($level),
+		$dbKey,
+		(string)($data['query'] ?? ''),
+		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
+		$data['time'] ?? null,
+	],
+	',',
+	'"',
+	'\\'
+);
+
+
+	fflush($fp);
+	fclose($fp);
+
+	return true;
+}
+
+
+

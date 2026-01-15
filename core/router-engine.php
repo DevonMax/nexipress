@@ -146,6 +146,44 @@ class Route
 						}
 					}
 				}
+// EXTRA SEGMENTI: prefisso valido ma URL più lungo della rotta
+$urlParts   = explode('/', trim($page, '/'));
+$routeParts = explode('/', trim($route['original'], '/'));
+
+if (count($urlParts) > count($routeParts)) {
+
+	$routeStaticParts = [];
+	foreach ($routeParts as $part) {
+		if (str_starts_with($part, ':')) break;
+		$routeStaticParts[] = $part;
+	}
+
+	$isSamePrefix = array_slice($urlParts, 0, count($routeStaticParts)) === $routeStaticParts;
+
+	if ($isSamePrefix) {
+
+		if (Config::get('routing_log')) {
+			nexi_debug_log([
+				'result'  => 'ERROR',
+				'page'    => $page,
+				'pattern' => $route['original'],
+				'error'   => 'ROUTE_EXTRA_SEGMENTS'
+			]);
+		}
+
+		ctx::set('route.path', $route['original']);
+
+		nexi_render_error_safe(
+			nexi_lang('route_extra_param_title'),
+			nexi_lang('route_extra_param_message', $page),
+			422,
+			null,
+			null,
+			null,
+			$route['original']
+		);
+	}
+}
 
 				continue;
 			}

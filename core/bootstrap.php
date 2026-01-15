@@ -9,12 +9,19 @@
 * X_* = Costanti runtime usate dal core
 * ====================================================================== */
 
+$isCli = defined('NEXIPRESS_CLI') && NEXIPRESS_CLI === true;
+
 if (!defined('X_ENV'))   define('X_ENV',   Config::get('env')   ?? 'production');
 if (!defined('X_DEBUG')) define('X_DEBUG', Config::get('debug') ?? 'mute');
 if (!defined('X_ROOT'))  define('X_ROOT',  rtrim(dirname(__FILE__, 2), '/') . '/');
 
-$uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-if (!defined('X_PAGE')) define('X_PAGE', trim($uriPath, '/'));
+$uriPath = $isCli
+	? '/'
+	: (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
+
+if (!defined('X_PAGE')) {
+	define('X_PAGE', trim($uriPath, '/'));
+}
 
 
 /* ======================================================================
@@ -51,10 +58,16 @@ require_once NP_CORE . '/db.php';
 /* -- IP Whitelist ----------------------------------------------------- */
 
 $allowed = Config::get('allowed_ips');
-if (!empty($allowed) && !ip_in_allowed($allowed, $_SERVER['REMOTE_ADDR'])) {
+
+$clientIp = $isCli
+	? '127.0.0.1'
+	: ($_SERVER['REMOTE_ADDR'] ?? null);
+
+if (!$isCli && !empty($allowed) && $clientIp && !ip_in_allowed($allowed, $clientIp)) {
 	http_response_code(403);
 	nexi_render_error('Forbidden', 'Accesso non autorizzato.', 403, __FILE__, __LINE__);
 }
+
 
 /* ======================================================================
 * 4. Context Bootstrap
@@ -72,7 +85,9 @@ ctx::set('alias.map', $alias);
 * Lingua sito / applicazione
 * ====================================================================== */
 
-$locale = nexi_locale_boot($_SERVER['REQUEST_URI'] ?? '/');
+$locale = $isCli
+	? (Config::get('lang_default') ?? Config::get('lang_fallback') ?? 'en')
+	: nexi_locale_boot($_SERVER['REQUEST_URI'] ?? '/');
 
 if (!$locale) {
 	$locale = Config::get('lang_default')
