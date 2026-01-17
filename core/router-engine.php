@@ -146,44 +146,45 @@ class Route
 						}
 					}
 				}
-// EXTRA SEGMENTI: prefisso valido ma URL più lungo della rotta
-$urlParts   = explode('/', trim($page, '/'));
-$routeParts = explode('/', trim($route['original'], '/'));
 
-if (count($urlParts) > count($routeParts)) {
+				// EXTRA SEGMENTI: prefisso valido ma URL più lungo della rotta
+				$urlParts   = explode('/', trim($page, '/'));
+				$routeParts = explode('/', trim($route['original'], '/'));
 
-	$routeStaticParts = [];
-	foreach ($routeParts as $part) {
-		if (str_starts_with($part, ':')) break;
-		$routeStaticParts[] = $part;
-	}
+				if (count($urlParts) > count($routeParts)) {
 
-	$isSamePrefix = array_slice($urlParts, 0, count($routeStaticParts)) === $routeStaticParts;
+					$routeStaticParts = [];
+					foreach ($routeParts as $part) {
+						if (str_starts_with($part, ':')) break;
+						$routeStaticParts[] = $part;
+					}
 
-	if ($isSamePrefix) {
+					$isSamePrefix = array_slice($urlParts, 0, count($routeStaticParts)) === $routeStaticParts;
 
-		if (Config::get('routing_log')) {
-			nexi_debug_log([
-				'result'  => 'ERROR',
-				'page'    => $page,
-				'pattern' => $route['original'],
-				'error'   => 'ROUTE_EXTRA_SEGMENTS'
-			]);
-		}
+					if ($isSamePrefix) {
 
-		ctx::set('route.path', $route['original']);
+						if (Config::get('routing_log')) {
+							nexi_debug_log([
+								'result'  => 'ERROR',
+								'page'    => $page,
+								'pattern' => $route['original'],
+								'error'   => 'ROUTE_EXTRA_SEGMENTS'
+							]);
+						}
 
-		nexi_render_error_safe(
-			nexi_lang('route_extra_param_title'),
-			nexi_lang('route_extra_param_message', $page),
-			422,
-			null,
-			null,
-			null,
-			$route['original']
-		);
-	}
-}
+						ctx::set('route.path', $route['original']);
+
+						nexi_render_error_safe(
+							nexi_lang('route_extra_param_title'),
+							nexi_lang('route_extra_param_message', $page),
+							422,
+							null,
+							null,
+							null,
+							$route['original']
+						);
+					}
+				}
 
 				continue;
 			}
@@ -272,10 +273,11 @@ if (count($urlParts) > count($routeParts)) {
 
 				if (Config::get('routing_log')) {
 					nexi_debug_log([
-						'result' => 'ERROR',
-						'page'   => $page,
-						'file'   => $file,
-						'error'  => 'INVALID_CONTROLLER'
+						'level' => 'ERROR',
+						'page'  => $page,
+						'file'  => $file,
+						'params'  => $params ?? [],
+						'error' => 'INVALID_CONTROLLER',
 					]);
 				}
 
@@ -289,12 +291,15 @@ if (count($urlParts) > count($routeParts)) {
 			if (!file_exists($file)) {
 
 				if (Config::get('routing_log')) {
+
 					nexi_debug_log([
-						'result' => 'ERROR',
-						'page'   => $page,
-						'file'   => $file,
-						'error'  => 'CONTROLLER_NOT_FOUND'
+						'level'   => 'ERROR',
+						'page'    => $page,
+						'file'    => $file,
+						'params'  => $params ?? [],
+						'error'   => 'CONTROLLER_NOT_FOUND',
 					]);
+
 				}
 
 				nexi_render_error_safe(

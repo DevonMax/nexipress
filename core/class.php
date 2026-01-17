@@ -222,18 +222,16 @@ function ctx_bootstrap_config(): void
 
 	// Flatten database config
 	if ($db = Config::get('databases')) {
-		foreach ($db as $dbKey => $params) {
-			foreach ($params as $k => $v) {
-				if($k === 'user'){
-					ctx::set("db.$dbKey.$k", "your-user-choice");
-				} else if($k === 'pass'){
-					ctx::set("db.$dbKey.$k", "your-password-choice");
-				} else {
-					ctx::set("db.$dbKey.$k", $v);
-				}
-			}
-		}
+	    foreach ($db as $dbKey => $params) {
+	        ctx::set("database.$dbKey", [
+	            'type' => $params['type'] ?? null,
+	            'host' => $params['host'] ?? null,
+	            'name' => $params['name'] ?? null,
+	            'log'  => $params['log']  ?? null,
+	        ]);
+	    }
 	}
+
 }
 
 /**

@@ -314,27 +314,23 @@ function nexi_safe_extra_databases(array $config): ?array
 */
 function nexi_debug_log(array $data): void
 {
-	if (Config::get('routing_log') !== true) {
-		return;
-	}
+	if (Config::get('routing_log') !== true) return;
 
 	$logDir = rtrim(ctx::get('log') ?? '', '/');
-	if ($logDir === '') return;
+	if ($logDir === '' || (!is_dir($logDir) && !mkdir($logDir, 0775, true))) return;
 
-	$week = date('o-W');
-	$file = $logDir . "/nexi-routing-week-$week.log";
-	$time = date('Y-m-d H:i:s');
+	$week      = date('o-W');
+	$timestamp = date('Y-m-d H:i:s');
+	$file      = $logDir . "/nexi-routing-week-$week.log";
 
-	is_dir(dirname($file)) || mkdir(dirname($file), 0775, true);
+	$isNew = !file_exists($file);
+	$fp = fopen($file, 'ab');
+	if (!$fp) return;
 
-	$isNewFile = !file_exists($file) || filesize($file) === 0;
-	$fp = fopen($file, 'a');
-
-	// HEADER (una sola volta)
-	if ($isNewFile) {
+	if ($isNew) {
 		fputcsv($fp, [
 			'TIMESTAMP',
-			'RESULT',
+			'LEVEL',
 			'APP_MODE',
 			'METHOD',
 			'URI',
@@ -345,27 +341,27 @@ function nexi_debug_log(array $data): void
 			'FILE_EXISTS',
 			'PARAMS_JSON',
 			'ERROR'
-		]);
+		], ',', '"', '\\');
 	}
 
-	// ROW
 	fputcsv($fp, [
-		$time,
-		$data['result']   ?? 'UNKNOWN',
+		$timestamp,
+		strtoupper($data['level'] ?? $data['result'] ?? 'INFO'),
 		Config::get('app_mode') ?? '-',
 		$_SERVER['REQUEST_METHOD'] ?? 'CLI',
 		$_SERVER['REQUEST_URI'] ?? '-',
-		$data['page']     ?? '-',
-		$data['pattern']  ?? '',
-		$data['regex']    ?? '',
-		$data['file']     ?? '',
-		isset($data['file']) ? (is_file($data['file']) ? 'YES' : 'NO') : '',
-		isset($data['params']) ? json_encode($data['params'], JSON_UNESCAPED_UNICODE) : '',
-		$data['error']    ?? ''
+		$data['page']    ?? '-',
+		$data['pattern'] ?? '',
+		$data['regex']   ?? '',
+		$data['file']    ?? '',
+		isset($data['file']) && is_file($data['file']) ? 'YES' : 'NO',
+		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
+		$data['error'] ?? ''
 	], ',', '"', '\\');
 
 	fclose($fp);
 }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -374,121 +370,129 @@ function nexi_debug_log(array $data): void
 | Log diagnostico delle query DB (solo in debug display).
 |--------------------------------------------------------------------------
 */
-// function nexi_db_log(string $dbKey, array $data): void
-// {
-// 	if (Config::get('debug') !== 'display') return;
+// function nexi_db_log(
+// 	string $dbKey,
+// 	string $level,
+// 	array $data,
+// 	bool $force = false
+// ): bool {
 
-// 	$week     = date('o-W');
-// 	$log_date = date('Y-m-d H:i:s');
-
-// 	$log_dir  = rtrim(Config::get('log_dir'), '/') . '/';
-// 	$log_file = $log_dir . "nexi-" . Config::get("databases.$dbKey.log") . "-week-$week.log";
-
-// 	is_dir(dirname($log_file)) || mkdir(dirname($log_file), 0775, true);
-
-// 	$isNewFile = !file_exists($log_file) || filesize($log_file) === 0;
-// 	$fp = fopen($log_file, 'a');
-
-// 	// HEADER (una sola volta)
-// 	if ($isNewFile) {
-// 		fputcsv($fp, [
-// 			'TIMESTAMP',
-// 			'DB_KEY',
-// 			'QUERY',
-// 			'PARAMS_JSON',
-// 			'EXEC_TIME_MS'
-// 		]);
+// 	// Log SEMPRE, debug serve solo per output a schermo
+// 	if (!$force && Config::get('log') === false) {
+// 		return false;
 // 	}
 
-// 	// ROW
-// 	fputcsv($fp, [
-// 		$log_date,
-// 		$dbKey,
-// 		$data['query'] ?? '',
-// 		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
-// 		$data['time'] ?? null
-// 	], ',', '"', '\\');
+// 	$timestamp = date('Y-m-d H:i:s');
+// 	$week      = date('o-W');
+
+// 	$logDir = rtrim(
+// 		Config::get('log_dir') ?? (NP_STORAGE . '/log'),
+// 		'/'
+// 	);
+
+// 	if (!is_dir($logDir) && !mkdir($logDir, 0775, true)) {
+// 		return false;
+// 	}
+
+// 	if (!is_writable($logDir)) {
+// 		return false;
+// 	}
+
+// 	$logName = Config::get("databases.$dbKey.log") ?: "db-$dbKey";
+// 	$logFile = "$logDir/nexi-$logName-week-$week.log";
+
+// 	$isNew = !file_exists($logFile);
+
+// 	$fp = fopen($logFile, 'ab'); // binary + append
+// 	if (!$fp) {
+// 		return false;
+// 	}
+
+// 	if ($isNew) {
+// 		fputcsv(
+// 			$fp,
+// 			[
+// 				'TIMESTAMP',
+// 				'LEVEL',
+// 				'DB_KEY',
+// 				'QUERY',
+// 				'PARAMS_JSON',
+// 				'EXEC_TIME_MS'
+// 			],
+// 			',',
+// 			'"',
+// 			'\\'
+// 		);
+// 	}
+
+// 	fputcsv(
+// 		$fp,
+// 		[
+// 			$timestamp,
+// 			strtoupper($level),
+// 			$dbKey,
+// 			(string)($data['query'] ?? ''),
+// 			json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
+// 			$data['time'] ?? null,
+// 		],
+// 		',',
+// 		'"',
+// 		'\\'
+// 	);
 
 
+// 	fflush($fp);
 // 	fclose($fp);
+
+// 	return true;
 // }
+/*
+|--------------------------------------------------------------------------
+| Icecube ORM Debug Log
+|--------------------------------------------------------------------------
+| Log diagnostico delle query ORM (solo se abilitato).
+|--------------------------------------------------------------------------
+*/
+function nexi_orm_log(array $data): void
+{
+	if (Config::get('orm_log') !== true) return;
 
-function nexi_db_log(
-	string $dbKey,
-	string $level,
-	array $data,
-	bool $force = false
-): bool {
+	$logDir = rtrim(ctx::get('log') ?? '', '/');
+	if ($logDir === '' || (!is_dir($logDir) && !mkdir($logDir, 0775, true))) return;
 
-	// Log SEMPRE, debug serve solo per output a schermo
-	if (!$force && Config::get('log') === false) {
-		return false;
-	}
-
-	$timestamp = date('Y-m-d H:i:s');
 	$week      = date('o-W');
+	$timestamp = date('Y-m-d H:i:s');
+	$file      = $logDir . "/nexi-orm-week-$week.log";
 
-	$logDir = rtrim(
-		Config::get('log_dir') ?? (NP_STORAGE . '/log'),
-		'/'
-	);
+	$isNew = !file_exists($file);
+	$fp = fopen($file, 'ab');
+	if (!$fp) return;
 
-	if (!is_dir($logDir) && !mkdir($logDir, 0775, true)) {
-		return false;
-	}
-
-	if (!is_writable($logDir)) {
-		return false;
-	}
-
-	$logName = Config::get("databases.$dbKey.log") ?: "db-$dbKey";
-	$logFile = "$logDir/nexi-$logName-week-$week.log";
-
-	$isNew = !file_exists($logFile);
-
-	$fp = fopen($logFile, 'ab'); // binary + append
-	if (!$fp) {
-		return false;
-	}
-
-if ($isNew) {
-	fputcsv(
-		$fp,
-		[
+	if ($isNew) {
+		fputcsv($fp, [
 			'TIMESTAMP',
 			'LEVEL',
-			'DB_KEY',
-			'QUERY',
+			'DB',
+			'OPERATION',
+			'SQL',
 			'PARAMS_JSON',
-			'EXEC_TIME_MS'
-		],
-		',',
-		'"',
-		'\\'
-	);
-}
+			'ROWS',
+			'ERROR'
+		], ',', '"', '\\');
+	}
 
-fputcsv(
-	$fp,
-	[
+	fputcsv($fp, [
 		$timestamp,
-		strtoupper($level),
-		$dbKey,
-		(string)($data['query'] ?? ''),
+		strtoupper($data['level'] ?? 'INFO'),
+		$data['db']        ?? 'default',
+		$data['operation'] ?? '',
+		$data['sql']       ?? '',
 		json_encode($data['params'] ?? [], JSON_UNESCAPED_UNICODE),
-		$data['time'] ?? null,
-	],
-	',',
-	'"',
-	'\\'
-);
+		$data['rows']  ?? '',
+		$data['error'] ?? ''
+	], ',', '"', '\\');
 
-
-	fflush($fp);
 	fclose($fp);
-
-	return true;
 }
-
 
 

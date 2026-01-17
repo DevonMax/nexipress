@@ -4,125 +4,17 @@
 // === Nexipress core logic function e snippets
 // ==================================================
 
-	/*
-	* Determina l'identificatore del sito corrente (SITE_ID) in base a host+URI
-	* confrontandolo con la mappa definita in `application/sites.map.php`.
-	*
-	* - Recupera host e path dalla richiesta.
-	* - Concatena in `$full_path` e cerca il primo pattern corrispondente.
-	* - Definisce la costante globale SITE_ID con il valore trovato o `site-main` di default.
-	* - Restituisce il percorso risolto del file `app:config.room.php` tramite `alias()`.
-	*
-	* @param mixed ...$args Argomenti variabili (attualmente non utilizzati).
-	* @return mixed Percorso del file di configurazione risolto da `alias()`.
-	*/
-	function np_site_id(mixed ...$args): mixed
-	{
-		if (defined('SITE_ID')) { return SITE_ID; }// Already defined, comes out silent
-
-		// Recover the data from the current request
-		$host = $_SERVER['HTTP_HOST'];
-		$uri  = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
-
-		$full_path = $host . ($uri ? "/$uri" : '');
-
-		$map = require __DIR__ . '/../application/sites.map.php'; // Recover Site Map
-
-		// Resolve correct web site
-		foreach ($map as $pattern => $site_id) {
-			if (str_starts_with($full_path, $pattern)) {
-				define('SITE_ID', $site_id);
-				break;
-			}
-		}
-
-		// Fallaback if $site_id is not found
-		define('SITE_ID', $site_id ?? 'site-main');
-
-		return alias("app:config.room.php"); // Config for single site
-	}
-
-	/*
-	* Richiama una funzione Nexi registrata tramite alias.
-	* @param string $label Nome alias
-	* @param mixed ...$args Parametri opzionali da passare alla funzione
-	* @return mixed
-	*/
-	function np_nexi(string $label, mixed ...$args): mixed
-	{
-		static $map = [
-			'session'     => 'fn_request_session_start',
-			'encrypt'     => 'fn_encrypt',
-			'decrypt'     => 'fn_decrypt',
-			'keys'        => 'fn_load_secure_keys',
-			'fingerprint' => 'fn_generate_fingerprint',
-			'identifier'  => 'fn_validate_identifier',
-			'hash'        => 'fn_create_hash',
-			'hash:check'  => 'fn_verify_hash',
-			'random'      => 'fn_random_string',
-		];
-
-		if (!isset($map[$label]) || !function_exists($map[$label])) {
-			nexi_render_error("Funzione non trovata", "Alias '$label' non è valido o la funzione non è definita.", 500);
-		}
-
-		$function = $map[$label];
-		$reflection = new ReflectionFunction($function);
-		$required = $reflection->getNumberOfRequiredParameters();
-		$given = count($args);
-
-		if ($given < $required) {
-			nexi_render_error(
-				"Parametri insufficienti",
-				"L'alias '$label' punta alla funzione $function(). Hai passato $given parametro/i, ma ne richiede almeno $required.",
-				500
-			);
-		}
-
-		// Ora è sicuro invocare la funzione
-		return $function(...$args);
-	}
-
-	/* ----------------- END ----------------- */
-
-	/*
-	* Restituisce un identificatore univoco e persistente per l'utente corrente.
-	*
-	* Se il cookie 'nexi_uid' è già presente e valido, lo restituisce.
-	* Altrimenti genera un nuovo identificatore hashato (basato su uniqid()), lo salva
-	* come cookie persistente (1 anno), e lo restituisce.
-	*
-	* L'identificatore generato è stabile e sicuro per usi come tracciamento locale,
-	* cache, identificazione temporanea utente, ma non è adatto per uso crittografico.
-	*
-	* @return string Identificatore univoco di 64 caratteri (SHA-256)
-	*/
-	function np_get_or_create_uid(): string
-	{
-		if (!empty($_COOKIE['nexi_uid']) && preg_match('/^[a-f0-9]{64}$/', $_COOKIE['nexi_uid'])) {
-			return $_COOKIE['nexi_uid'];
-		}
-
-		// Genera nuovo UID e salva nel cookie
-		$newUid = hash('sha256', uniqid('nexi_', true));
-		setcookie('nexi_uid', $newUid, [
-			'expires' => time() + (86400 * 365), // 1 anno
-			'path' => '/',
-			'samesite' => 'Lax',
-			'secure' => isset($_SERVER['HTTPS']),
-			'httponly' => true
-		]);
-
-		return $newUid;
-	}
-
 // ====================================================
 // === [HELPER] Funzioni helper shortcut ==============
 // === Accesso rapido a alias, config, lang, ecc. =====
 // === Usate in view, controller, snippet, fallback ===
 // ====================================================
 
-	// Da finalizzare problemi in visualizzazione con CSS
+	/**
+	* Include informazioni di debug ambiente se X_DEBUG è attivo.
+	* No-op in produzione (mute).
+	* ATTENZIONE: Arricchire con pi	u info ora che il core e maturo
+	*/
 	function nexi_debug_env(): void
 	{
 		if (X_DEBUG === 'mute') return;
@@ -132,9 +24,6 @@
 			include $path;
 		}
 	}
-
-
-
 
 	/*
 	* Resolve an alias into a real path or return the original key if not mapped.
@@ -211,27 +100,50 @@
 	}
 	/* ----------------- END ----------------- */
 
+	/**
+	* Include una view del tema attivo risolvendo il path tramite alias.
+	*
+	* @param string $file Nome view (relativo, senza estensione).
+	* @param array  $vars Variabili esposte alla view.
+	*/
 	function view(string $file, array $vars = []): void
 	{
-		$theme = ctx::get('theme.active') ?? 'default';
-		$path  = X_ROOT . "/themes/$theme/pages/$file.php"; // SBAGLIATO
-
-		extract($vars, EXTR_SKIP);
-
-		if (file_exists($path)) {
-			require $path;
-		} else {
-			echo "<!-- View not found: $file -->";
+		// Sanitizzazione minima
+		$file = trim($file, "/ \t\n\r\0\x0B");
+		if ($file === '' || str_contains($file, '..')) {
+			echo "<!-- Invalid view: {$file} -->";
+			return;
 		}
+
+		// Risoluzione path (tema già gestito dall'alias)
+		$path = alias("thm_pages:$file.php", false);
+
+		if (!$path || !is_file($path)) {
+			echo "<!-- View not found: {$file} -->";
+			return;
+		}
+
+		if ($vars) {
+			extract($vars, EXTR_SKIP);
+		}
+
+		require $path;
 	}
 	/* ----------------- END ----------------- */
 
 	/*
 	* Helper per accedere ai tipi supportati.
 	*
-	* - types()                  → restituisce tutti i tipi
+	* - types()                 → restituisce tutti i tipi
 	* - types('slug')           → restituisce 'slug' se esiste, altrimenti null
 	* - types('slug', true)     → restituisce true/false
+	*
+	* Esempi d'uso
+	* Check booleano (es. durante parse route)
+	* if (!types('slug', true)) { tipo non supportato }
+	*
+	* Recupero tipo (es. normalizzazione)
+	* $type = types('int'); // 'int' oppure null
 	*
 	* @param string|null $key
 	* @param bool $checkOnly
@@ -268,69 +180,80 @@
 	* - Se vengono passati più parametri del necessario, quelli in eccesso vengono ignorati.
 	* - I valori vengono codificati con `urlencode()`, compatibili con gli URL standard (`+` per gli spazi).
 	*
+	* Esempi d'uso
+	* <a href="<?= _link('@articles_list', [ 'category' => 'tech', 'slug'     => 'nexipress-core' ]); ?>">test 1</a>
+	* <a href="<?= _link('#self', ['pagina-2']); ?>">test 2</a>
+	* <a href="<?= _link('admin/user/:id/edit', ['id' => 42]); ?>">test 3</a>
+	*
 	* @param string               $pattern Pattern con placeholder (es. 'admin/:id/:action'), `@alias`, o `'#self'`
 	* @param array<string|int>|string $params Parametri da iniettare nel pattern (associativi o posizionali), oppure path già risolto
 	* @return string URL generato, normalizzato, con `/` iniziale
 	*/
 	function _link(string $pattern, array|string $params = []): string
 	{
-		// Se il secondo argomento è una stringa (es. path già compilato), restituiscilo così com'è
+		// Caso: path già risolto
 		if (is_string($params)) {
 			return '/' . ltrim($params, '/');
 		}
 
-		// Gestione keyword speciale #self
+		// Caso speciale: #self
 		if ($pattern === '#self') {
-			$currentParts = explode('/', trim(ctx::get('route.resolve', ''), '/'));
-			$override = array_values($params);
-			$count = count($override);
+			$current = trim((string)ctx::get('route.resolve'), '/');
+			if ($current === '') return '/';
 
-			// Applica i nuovi parametri da destra verso sinistra
-			for ($i = 1; $i <= $count; $i++) {
-				$index = count($currentParts) - $i;
-				if ($index >= 0) {
-					$currentParts[$index] = urlencode((string)$override[$count - $i]);
+			$parts = explode('/', $current);
+			$override = array_values($params);
+			$len = count($parts);
+
+			foreach ($override as $i => $value) {
+				$idx = $len - count($override) + $i;
+				if ($idx >= 0) {
+					$parts[$idx] = rawurlencode((string)$value);
 				}
 			}
 
-			return '/' . implode('/', $currentParts);
+			return '/' . implode('/', $parts);
 		}
 
-		// Risoluzione alias dichiarativi @alias → path con placeholder
-		if (str_starts_with($pattern, '@')) {
+		// Alias dichiarativo @alias
+		if ($pattern[0] === '@') {
 			$routePath = Route::getRoutePath($pattern);
-			if ($routePath !== null) {
-				$pattern = $routePath;
+			if (!$routePath) {
+				return '/@INVALID_ROUTE';
 			}
+			$pattern = $routePath;
 		}
 
-		// Estrae i placeholder nel pattern (es: :id, :name)
-		preg_match_all('/:([a-zA-Z0-9_]+)(\([^\)]+\))?/', $pattern, $matches);
-		$placeholders = $matches[1] ?? [];
+		// Estrazione placeholder
+		preg_match_all('/:([a-zA-Z0-9_]+)(\([^)]+\))?/', $pattern, $m);
+		$placeholders = $m[1] ?? [];
 
-		// Se i parametri sono posizionali (array numerico), mappa in base all’ordine
+		// Parametri posizionali → associativi
 		if (array_is_list($params)) {
-			$converted = [];
+			$assoc = [];
 			foreach ($placeholders as $i => $name) {
-				$converted[$name] = array_key_exists($i, $params) ? $params[$i] : null;
+				$assoc[$name] = $params[$i] ?? null;
 			}
-			$params = $converted;
+			$params = $assoc;
 		}
 
-		// Sostituzione nel pattern
+		// Sostituzione sicura
 		foreach ($placeholders as $name) {
-
-			// Fallback in base al debug
-			if (ctx::get('debug') === 'display') {
-				$value = isset($params[$name]) ? urlencode((string)$params[$name]) : ':' . $name;
+			if (array_key_exists($name, $params)) {
+				$value = rawurlencode((string)$params[$name]);
 			} else {
-				$value = isset($params[$name]) ? urlencode((string)$params[$name]) : '';
+				// placeholder mancante → sempre visibile
+				$value = ':' . $name;
 			}
 
-			$pattern = preg_replace('/:' . $name . '(\([^\)]+\))?/', $value, $pattern, 1);
+			$pattern = preg_replace(
+				'/:' . $name . '(\([^)]+\))?/',
+				$value,
+				$pattern,
+				1
+			);
 		}
 
-		// Restituisce l'URL normalizzato
 		return '/' . ltrim($pattern, '/');
 	}
 	/* ----------------- END ----------------- */
@@ -350,6 +273,18 @@
 
 	/*
 	* Applica una trasformazione a un array associativo mantenendo le chiavi originali.
+	* Esempio d'uso
+	* $routes = [
+	* 	'home' => 'home.controller',
+	* 	'blog' => 'blog.controller',
+	* ];
+
+	* $resolved = array_map_assoc($routes, fn($target) => "app:$target");
+	* [
+	* 	'home' => 'app:home.controller',
+	* 	'blog' => 'app:blog.controller',
+	* ]
+	*
 	* @param array $array Array associativo da trasformare
 	* @param callable $callback Funzione ($value, $key): mixed
 	* @return array Nuovo array con le stesse chiavi trasformate
@@ -674,23 +609,21 @@
 // ==================================================
 
 	/*
-	Memo – Funzione futura: fn_resolve_ip_details()
-
-	Funzione dedicata per ottenere informazioni avanzate su un indirizzo IP.
-	Interfaccia con API esterne (es. ipinfo, ip-api) o database interni per restituire:
-
-	- Tipo IP (IPv4/IPv6)
-	- ASN e organizzazione
-	- Geolocalizzazione (paese, città)
-	- Indicatore rete condivisa (CGNAT, proxy, VPN)
-	- Flag residenziale/business/hosting
-
-	Scopo: fornire dati affidabili per logging, analytics, limitazioni o sicurezza avanzata.
-
-	Separata da fn_validate_identifier() per mantenere responsabilità distinte.
-	*/
-
-	/*
+	* Memo – Funzione futura: fn_resolve_ip_details()
+	*
+	* Funzione dedicata per ottenere informazioni avanzate su un indirizzo IP.
+	* Interfaccia con API esterne (es. ipinfo, ip-api) o database interni per restituire:
+	*
+	* - Tipo IP (IPv4/IPv6)
+	* - ASN e organizzazione
+	* - Geolocalizzazione (paese, città)
+	* - Indicatore rete condivisa (CGNAT, proxy, VPN)
+	* - Flag residenziale/business/hosting
+	*
+	* Scopo: fornire dati affidabili per logging, analytics, limitazioni o sicurezza avanzata.
+	*
+	* Separata da fn_validate_identifier() per mantenere responsabilità distinte.
+	*
 	* Verifica se un indirizzo IP è contenuto in una lista di IP o intervalli CIDR.
 	* @param array $allowed_ips Lista di IP singoli o intervalli in formato CIDR (es. 192.168.0.0/24).
 	* @param string $ip Indirizzo IP da verificare.

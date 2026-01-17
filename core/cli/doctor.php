@@ -20,7 +20,7 @@ return function (array $argv): int {
 
 		echo ">> {$cmd}\n";
 
-		$file = NP_CORE . '/cli/commands/' . $cmd . '.php';
+		$file = NP_CORE . '/cli/' . $cmd . '.php';
 		if (!file_exists($file)) {
 			echo "[FAIL] Command file missing: {$cmd}\n\n";
 			$errors = true;

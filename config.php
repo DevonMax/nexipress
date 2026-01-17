@@ -19,14 +19,19 @@ return [
 // IP autorizzati
 // *****************************************************************************************
 
-	'allowed_ips' => [
-		'127.0.0.1',
-		'::1',
-		'185.2.145.10',
-		'2001:1600:13:100:f816:3eff:fe1a:3052',
-		'185.2.144.0/24',
-		'2001:1600:13:100::/64',
+'security' => [
+	'ip_whitelist' => [
+		'enabled' => true,
+		'ips' => [
+			'127.0.0.1',
+			'::1',
+			'185.2.145.10',
+			'2001:1600:13:100:f816:3eff:fe1a:3052',
+			'185.2.144.0/24',
+			'2001:1600:13:100::/64',
+		],
 	],
+],
 
 // *****************************************************************************************
 // Debug & Log
@@ -34,6 +39,7 @@ return [
 
 	'debug'   => 'display', // display|mute
 	'routing_log' => true, // false | true
+	'icecube_log' => true, // false | true
 
 	'log_dir' => NP_ROOT . '/storage/log',
 
@@ -52,6 +58,8 @@ return [
 			'log'     => 'db-default',
 		],
 	],
+
+	// Application Type -> NO ORM/Icecube - Use for Router, validation, input casting
 	'types' => ['int','dbl','string','str','string-lower','string-upper','slug','bool','uuid'],
 
 // *****************************************************************************************

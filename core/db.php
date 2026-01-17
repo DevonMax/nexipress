@@ -1,57 +1,39 @@
 <?php
-use Medoo\Medoo;
+declare(strict_types=1);
 
-/**
-* Restituisce l'istanza Medoo del database richiesto.
-* - Multi-DB
-* - Lazy loading
-* - Config letta da Config (non da file)
-*
-* @param string $key Nome del database (default: 'default')
-* @return Medoo
-*/
-function db(string $key = 'default'): Medoo
+use NexiPress\orm\Connection;
+
+final class DB
 {
-	static $connections = [];
+	private static array $connections = [];
 
-	if (!isset($connections[$key])) {
+	public static function get(string $key = 'default'): Connection
+	{
+		if (!isset(self::$connections[$key])) {
 
-		$dbConf = Config::get("databases.$key");
+			$db = Config::get("databases.$key");
 
-		if (!$dbConf || !is_array($dbConf)) {
-			nexi_render_error(
-				'Database error',
-				"Database '$key' non definito in configurazione.",
-				500
+			if (!$db) {
+				throw new RuntimeException("Database '$key' not configured");
+			}
+
+			$dsn = sprintf(
+				'mysql:host=%s;dbname=%s;charset=%s',
+				$db['host'],
+				$db['name'],
+				$db['charset'] ?? 'utf8mb4'
 			);
+
+			self::$connections[$key] = new Connection([
+				'dsn'      => $dsn,
+				'user'     => $db['user'],
+				'password' => $db['pass'],
+				'options'  => [
+					PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+				],
+			]);
 		}
 
-		try {
-			$params = [
-				'type'     => $dbConf['type'] ?? 'mariadb',
-				'host'     => $dbConf['host'] ?? 'localhost',
-				'database' => $dbConf['name'] ?? '',
-				'username' => $dbConf['user'] ?? '',
-				'password' => $dbConf['pass'] ?? '',
-				'charset'  => $dbConf['charset'] ?? 'utf8mb4',
-				'error'    => PDO::ERRMODE_EXCEPTION,
-			];
-
-			if (!empty($dbConf['port']))   $params['port']   = $dbConf['port'];
-			if (!empty($dbConf['prefix'])) $params['prefix'] = $dbConf['prefix'];
-
-			$connections[$key] = new Medoo($params);
-
-		} catch (Throwable $e) {
-			nexi_render_error(
-				'Database connection failed',
-				$e->getMessage(),
-				500,
-				$e->getFile(),
-				$e->getLine()
-			);
-		}
+		return self::$connections[$key];
 	}
-
-	return $connections[$key];
 }

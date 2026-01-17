@@ -1,0 +1,11 @@
+{
+  "name": "nexipress/core",
+  "description": "NexiPress core autoload",
+  "type": "project",
+  "autoload": {
+    "psr-4": {
+      "NexiPress\\": "core/"
+    }
+  },
+  "require": {}
+}

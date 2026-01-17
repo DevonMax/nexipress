@@ -14,7 +14,7 @@ $command = $argv[1] ?? 'help';
 | Static Paths (same as index.php)
 |--------------------------------------------------
 */
-define('NP_ROOT', dirname(__DIR__));
+define('NP_ROOT', __DIR__);
 define('NP_APP',  NP_ROOT . '/application');
 define('NP_CORE', NP_ROOT . '/core');
 define('NP_STORAGE', NP_ROOT . '/storage');
@@ -75,13 +75,13 @@ require_once NP_CORE . '/bootstrap.php';
 |--------------------------------------------------
 */
 $commandMap = [
-	'doctor'  => NP_ROOT . '/cli/commands/doctor.php',
-	'envcheck' => NP_ROOT . '/cli/commands/envcheck.php',
-	'help'  => NP_ROOT . '/cli/commands/help.php',
-	'integrity'  => NP_ROOT . '/cli/commands/integrity.php',
-	'logs'  => NP_ROOT . '/cli/commands/logs.php',
-	'ping'  => NP_ROOT . '/cli/commands/ping.php',
-	'routes'  => NP_ROOT . '/cli/commands/routes.php',
+	'doctor'  => NP_ROOT . '/core/cli/doctor.php',
+	'envcheck' => NP_ROOT . '/core/cli/envcheck.php',
+	'help'  => NP_ROOT . '/core/cli/help.php',
+	'integrity'  => NP_ROOT . '/core/cli/integrity.php',
+	'logs'  => NP_ROOT . '/core/cli/logs.php',
+	'ping'  => NP_ROOT . '/core/cli/ping.php',
+	'routes'  => NP_ROOT . '/core/cli/routes.php',
 ];
 
 /*

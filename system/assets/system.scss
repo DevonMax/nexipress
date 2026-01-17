@@ -126,7 +126,7 @@
 	// begin::Info box
 	.infobox {
 
-		background: rgba(22, 24, 33, .95);
+		background: rgba(37,42,57,.98);
 		padding: 15px;
 		font-family: monospace;
 		z-index: 999999;
@@ -135,9 +135,11 @@
 		margin: 20px;
 		border: 1px solid #36404a;
 		overflow: auto;
+		border-radius: 10px;
 
 		/* Styling interno */
 		h3 {
+			color: #9cf;
 			margin: 0 0 10px 0;
 			padding-bottom: 15px;
 			font-size: 1.8rem;
