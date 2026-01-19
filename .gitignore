@@ -1,9 +1,6 @@
 /archive/
 /vendor/
 
-/storage/*
-!/storage/.gitkeep
-
 .env
 .env.*
 
