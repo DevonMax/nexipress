@@ -53,7 +53,6 @@ switch (Config::get('middleware_include_mode')) {
 	case 'all': // Carica TUTTI i middleware presenti nella directory
 
 		$loaded = glob($middlewarePath . '*.php') ?: [];
-		print_r($loaded);
 		break;
 
 	case 'custom': // Carica SOLO i middleware dichiarati in config

@@ -65,7 +65,14 @@ if (!file_exists(NP_ROOT . '/config.php')) {
 	exit(1);
 }
 
-Config::load(require NP_ROOT . '/config.php');
+Config::load(require NP_ROOT . '/config.php', 'system');
+Config::load(
+    require NP_ROOT . '/application/app.config.php',
+    'app'
+);
+Config::setAppConfigFile(
+    NP_ROOT . '/application/app.config.php'
+);
 
 require_once NP_CORE . '/bootstrap.php';
 

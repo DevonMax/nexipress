@@ -13,96 +13,150 @@
 | NON è request-aware
 |--------------------------------------------------------------------------
 */
-class Config
+final class Config
 {
-	/**
-	* Storage interno configurazione.
-	* Array multidimensionale.
-	*/
-	protected static array $data = [];
 
-	/**
-	* Carica l'intero array di configurazione.
-	* Sovrascrive tutto.
-	*/
-	public static function load(array $config): void {
-		self::$data = $config;
-	}
+	// Storage interno separato per scope.
+	protected static array $data = [
+		'system' => [],
+		'app'    => [],
+	];
 
-	/**
-	* Imposta un valore usando dot notation.
-	* Crea i livelli intermedi se mancanti.
-	*/
-	public static function set(string $path, $value): void {
-		$keys = array_map(fn($k) => rtrim($k, ':'), explode('.', $path));
-		$dset =& self::$data;
+	// Path file app.config.php (per persistenza runtime).
+	protected static ?string $appConfigFile = null;
 
-		foreach ($keys as $key) {
+	/* =====================================================
+	   LOAD
+	===================================================== */
 
-			// Normalizza chiavi con/senza :
-			$normalized = [];
-			foreach ($dset as $k => $v) {
-				$normalized[rtrim($k, ':')] = $v;
-			}
-			$dset = $normalized;
-
-			if (!isset($dset[$key]) || !is_array($dset[$key])) {
-				$dset[$key] = [];
-			}
-			$dset =& $dset[$key];
+	public static function load(array $config, string $scope = 'system'): void
+	{
+		if (!isset(self::$data[$scope])) {
+			throw new RuntimeException("Invalid config scope: {$scope}");
 		}
 
-		$dset = $value;
+		self::$data[$scope] = $config;
 	}
 
-	/**
-	* Verifica esistenza chiave (dot notation).
-	*/
-	public static function has(string $path): bool {
-		$keys = array_map(fn($k) => rtrim($k, ':'), explode('.', $path));
-		$dget = self::$data;
+	public static function setAppConfigFile(string $path): void
+	{
+		self::$appConfigFile = $path;
+	}
+
+	/* =====================================================
+	   GET
+	===================================================== */
+
+	public static function get(string $path, $default = null)
+	{
+		if (self::hasIn('app', $path)) {
+			return self::getFrom('app', $path);
+		}
+
+		if (self::hasIn('system', $path)) {
+			return self::getFrom('system', $path);
+		}
+
+		return $default;
+	}
+
+	public static function has(string $path): bool
+	{
+		return self::hasIn('app', $path) || self::hasIn('system', $path);
+	}
+
+	/* =====================================================
+	   SET (runtime only)
+	===================================================== */
+
+	public static function set(string $path, $value): void
+	{
+		self::setOn('app', $path, $value);
+	}
+
+	/* =====================================================
+	   PERSISTENCE (CMS)
+	===================================================== */
+
+	public static function save(): void
+	{
+		if (!self::$appConfigFile) {
+			throw new RuntimeException('App config file path not set');
+		}
+
+		$export = "<?php\nreturn " . var_export(self::$data['app'], true) . ";\n";
+
+		file_put_contents(
+			self::$appConfigFile,
+			$export,
+			LOCK_EX
+		);
+	}
+
+	/* =====================================================
+	   INTERNAL HELPERS
+	===================================================== */
+
+	protected static function getFrom(string $scope, string $path)
+	{
+		$keys = explode('.', $path);
+		$data = self::$data[$scope];
 
 		foreach ($keys as $key) {
-			$normalized = [];
-			foreach ($dget as $k => $v) {
-				$normalized[rtrim($k, ':')] = $v;
+			if (!is_array($data) || !array_key_exists($key, $data)) {
+				return null;
 			}
-			$dget = $normalized;
+			$data = $data[$key];
+		}
 
-			if (!is_array($dget) || !array_key_exists($key, $dget)) {
+		return $data;
+	}
+
+	protected static function hasIn(string $scope, string $path): bool
+	{
+		$keys = explode('.', $path);
+		$data = self::$data[$scope];
+
+		foreach ($keys as $key) {
+			if (!is_array($data) || !array_key_exists($key, $data)) {
 				return false;
 			}
-			$dget = $dget[$key];
+			$data = $data[$key];
 		}
+
 		return true;
 	}
 
-	/**
-	* Recupera un valore con fallback.
-	*/
-	public static function get(string $path, $default = null) {
+	protected static function setOn(string $scope, string $path, $value): void
+	{
+		if ($scope !== 'app') {
+			throw new RuntimeException('System config is read-only');
+		}
+
 		$keys = explode('.', $path);
-		$dget = self::$data;
+		$data =& self::$data[$scope];
 
 		foreach ($keys as $key) {
-			if (!is_array($dget) || !array_key_exists($key, $dget)) {
-				return $default;
+			if (!isset($data[$key]) || !is_array($data[$key])) {
+				$data[$key] = [];
 			}
-			$dget = $dget[$key];
+			$data =& $data[$key];
 		}
-		return $dget;
+
+		$data = $value;
 	}
 
-	/**
-	* Ritorna l'intera configurazione.
-	* Opzionale output formattato.
-	*/
-	public static function all(bool $isFormat = false): array {
-		$data = self::$data;
-		if ($isFormat) {
-			echo formatArray($data, true);
+	/* =====================================================
+	   DEBUG / INSPECTION
+	===================================================== */
+
+	public static function all(string $scope = ''): array
+	{
+		if ($scope) {
+			return self::$data[$scope] ?? [];
 		}
-		return $data;
+
+		return self::$data;
 	}
 }
 /* ----------------- END ----------------- */
@@ -121,7 +175,7 @@ class Config
 | NON è configurazione
 |--------------------------------------------------------------------------
 */
-class ctx
+final class ctx
 {
 	/**
 	* Storage interno del contesto runtime.
@@ -211,27 +265,40 @@ class ctx
 */
 function ctx_bootstrap_config(): void
 {
-	ctx::set('env', Config::get('env'));
-	ctx::set('mode', Config::get('app_mode'));
-	ctx::set('name', Config::get('app_name'));
-	ctx::set('ver', Config::get('version'));
-	ctx::set('url', Config::get('base_url'));
-	ctx::set('zone', Config::get('app_timezone'));
-	ctx::set('debug', Config::get('debug'));
-	ctx::set('log', Config::get('log_dir'));
+	// Identità applicativa (runtime-safe)
+	ctx::set('app', [
+		'env'   => Config::get('env'),
+		'mode'  => Config::get('app_mode'),
+		'name'  => Config::get('app_name'),
+		'ver'   => Config::get('version'),
+		'url'   => Config::get('base_url'),
+		'tz'    => Config::get('app_timezone'),
+		'debug' => Config::get('debug'),
+	]);
 
-	// Flatten database config
-	if ($db = Config::get('databases')) {
-	    foreach ($db as $dbKey => $params) {
-	        ctx::set("database.$dbKey", [
-	            'type' => $params['type'] ?? null,
-	            'host' => $params['host'] ?? null,
-	            'name' => $params['name'] ?? null,
-	            'log'  => $params['log']  ?? null,
-	        ]);
-	    }
+	// Espone nel contesto runtime il percorso della directory di log.
+	//
+	// - Il valore proviene dalla configurazione di sistema (bootstrap)
+	// - Serve a codice runtime (logger, middleware, debug) per sapere
+	//   *dove* scrivere o leggere i log
+	// - Evita accessi diretti a Config dentro controller / view
+	// - Non espone l’intera configurazione di logging, solo l’informazione necessaria
+	//
+	// Nota:
+	// ctx NON replica la config, ma rende disponibili solo i dati
+	// utili durante la gestione della singola richiesta.
+	ctx::set('log_dir', Config::get('log_dir'));
+
+	// Database: SOLO metadati utili a runtime
+	if ($dbs = Config::get('databases')) {
+		foreach ($dbs as $key => $cfg) {
+			ctx::set("databases.$key", [
+				'type' => $cfg['type'] ?? null,
+				'name' => $cfg['name'] ?? null,
+				'log'  => $cfg['log']  ?? null,
+			]);
+		}
 	}
-
 }
 
 /**
@@ -272,7 +339,7 @@ function ctx_dump(bool $highlight = true, bool $isPre = false): void
 | NON dipende dal template engine
 |--------------------------------------------------------------------------
 */
-class nexi_i18n
+final class nexi_i18n
 {
 	/**
 	* Storage statico delle traduzioni caricate.
@@ -468,7 +535,7 @@ function _kc(string $key, int $count, array $vars = []): string {
 |--------------------------------------------------------------------------
 | Client HTTP/API centralizzato.
 |
-| - Configurazione via Config::get('api.*')
+| - Configurazione via Config::get('api.*') File: /application/app.config.php
 | - Supporto GET / POST / PUT / DELETE
 | - Logging automatico
 | - Parsing headers + JSON

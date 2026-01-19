@@ -4,7 +4,7 @@
 * -------------------------------------------------------------------------------------- */
 
 /* ======================================================================
-* 1. Runtime Environment & Core Constants
+* Runtime Environment & Core Constants
 * ----------------------------------------------------------------------
 * X_* = Costanti runtime usate dal core
 * ====================================================================== */
@@ -25,7 +25,17 @@ if (!defined('X_PAGE')) {
 
 
 /* ======================================================================
-* 2. Alias Resolution & Path Mapping
+* Error & Exception Handling
+* ----------------------------------------------------------------------
+* Hook globali di errore
+* ====================================================================== */
+
+set_error_handler('nexi_error_handler');
+set_exception_handler('nexi_exception_handler');
+register_shutdown_function('nexi_fatal_handler');
+
+/* ======================================================================
+* Alias Resolution & Path Mapping
 * ----------------------------------------------------------------------
 * Costruzione mappa alias runtime
 * ====================================================================== */
@@ -46,7 +56,7 @@ foreach ($map as $key => $path) {
 }
 
 /* ======================================================================
-* 3. Core Dependencies & System Guards
+* Core Dependencies & System Guards
 * ----------------------------------------------------------------------
 * Autoload, funzioni globali, database, sicurezza base
 * ====================================================================== */
@@ -57,20 +67,28 @@ require_once NP_CORE . '/db.php';
 
 /* -- IP Whitelist ----------------------------------------------------- */
 
-$allowed = Config::get('allowed_ips');
+$ipConfig = Config::get('security.ip_whitelist');
+
+$enabled = $ipConfig['enabled'] ?? false;
+$allowed = $ipConfig['ips'] ?? [];
 
 $clientIp = $isCli
 	? '127.0.0.1'
 	: ($_SERVER['REMOTE_ADDR'] ?? null);
 
-if (!$isCli && !empty($allowed) && $clientIp && !ip_in_allowed($allowed, $clientIp)) {
+if (
+	!$isCli
+	&& $enabled === true
+	&& !empty($allowed)
+	&& $clientIp
+	&& !ip_in_allowed($allowed, $clientIp)
+) {
 	http_response_code(403);
 	nexi_render_error('Forbidden', 'Accesso non autorizzato.', 403, __FILE__, __LINE__);
 }
 
-
 /* ======================================================================
-* 4. Context Bootstrap
+* Context Bootstrap
 * ----------------------------------------------------------------------
 * Inizializzazione contesto globale
 * ====================================================================== */
@@ -80,7 +98,7 @@ ctx::set('alias.map', $alias);
 
 
 /* ======================================================================
-* 5. Application Language (Frontend)
+* Application Language (Frontend)
 * ----------------------------------------------------------------------
 * Lingua sito / applicazione
 * ====================================================================== */
@@ -98,21 +116,17 @@ if (!$locale) {
 ctx::set('lang.current', $locale);
 
 /* ======================================================================
-* 6. System Language (Framework)
+* System Language (Framework)
 * ----------------------------------------------------------------------
 * Lingua interna del framework
 * ====================================================================== */
 
-$langSys = require NP_ROOT . '/system/locale/config-locale.php';
-
-ctx::set('lang.sys.current',  $langSys['lang_sys_current']);
-ctx::set('lang.sys.list',     $langSys['lang_sys_list']);
-ctx::set('lang.sys.fallback', $langSys['lang_sys_fallback']);
-
-unset($langSys);
+ctx::set('lang.sys.current', Config::get('lang_sys_current'));
+ctx::set('lang.sys.list', Config::get('lang_sys_list'));
+ctx::set('lang.sys.fallback', Config::get('lang_sys_fallback'));
 
 /* ======================================================================
-* 7. Theme Configuration
+* Theme Configuration
 * ----------------------------------------------------------------------
 * Tema attivo e fallback
 * ====================================================================== */
@@ -121,7 +135,7 @@ ctx::set('theme.active',   Config::get('thm_active'));
 ctx::set('theme.fallback', Config::get('thm_fallback'));
 
 /* ======================================================================
-* 8. Secure Keys Initialization
+* Secure Keys Initialization
 * ----------------------------------------------------------------------
 * Chiavi runtime / sicurezza
 * ====================================================================== */
@@ -130,13 +144,3 @@ $__keys = fn_load_secure_keys();
 
 define('KEY_STT', $__keys['KEY_STT']);
 define('KEY_API', $__keys['KEY_API']);
-
-/* ======================================================================
-* 9. Error & Exception Handling
-* ----------------------------------------------------------------------
-* Hook globali di errore
-* ====================================================================== */
-
-set_error_handler('nexi_error_handler');
-set_exception_handler('nexi_exception_handler');
-register_shutdown_function('nexi_fatal_handler');
